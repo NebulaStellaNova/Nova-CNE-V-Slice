@@ -1,0 +1,96 @@
+import funkin.modding.module.Module;
+
+import Std;
+import String;
+import StringTools;
+import flixel.FlxG;
+
+import hscript.Parser;
+import hscript.Interp;
+
+import funkin.util.ReflectUtil;
+import haxe.Log;
+
+class HScript extends Module {
+
+    public var interp;
+    public var parser;
+	public var expr;
+
+    public var fileName = "test.hx";
+
+    public var code = "";
+
+    public function new() {
+        super('HScript');
+    }
+
+    public function initVars() {
+        //  -- Methods --  \\
+        interp.variables.set("add", FlxG.state.add);
+
+        var autoImports = new HScriptImports().getImports();
+
+        for (i in autoImports.keys()) {
+            //trace(i);
+            set(i, autoImports.get(i));
+        }
+
+    }
+
+    public function init(data) {
+        parser = new Parser();
+        interp = new Interp();
+
+        //interp.errorHandler = _errorHandler;
+        
+		//interp.allowStaticVariables = interp.allowPublicVariables = true;
+
+        interp.variables.set("trace", this.trace);
+        initVars();
+
+        code = data;
+        //loadFromString(data);
+
+        call("create");
+        call("onCreate");
+    }
+
+    function loadFromString(code) {
+        if (code != null && StringTools.trim(code) != "")
+            expr = parser.parseString(code, fileName);
+    }
+
+    public function get(val:String):Dynamic {
+		return interp.variables.get(val);
+	}
+
+	public function set(val:String, value:Dynamic) {
+		interp.variables.set(val, value);
+	}
+
+    public function call(funcName, params = []) {
+        if (StringTools.contains(code, "function " + funcName)) {
+            var paramString = params != null ? params.join(",") : "";
+            try {
+                interp.execute(new Parser().parseString(code + "\n" + funcName + "(" + paramString + ");"));
+            } catch (e:Dynamic) {
+                trace(e);
+            }
+        }
+    }
+
+    public override function trace(v:Dynamic) {
+		var posInfo = interp.posInfos();
+
+        Log.trace(fileName + ':' + posInfo.lineNumber + ': ' + Std.isOfType(v, String) ? v : Std.string(v));
+		/* Logs.traceColored([
+			Logs.logText(fileName + ':' + posInfo.lineNumber + ': ', GREEN),
+			Logs.logText(Std.isOfType(v, String) ? v : Std.string(v))
+		], TRACE); */
+	}
+
+    public function destroy() {
+        call("destory");
+    }
+}

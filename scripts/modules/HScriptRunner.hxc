@@ -1,0 +1,120 @@
+import StringTools;
+import flixel.FlxG;
+import funkin.play.PlayState;
+import funkin.util.ReflectUtil;
+import funkin.modding.module.Module;
+import funkin.ui.mainmenu.MainMenuState;
+import haxe.Json;
+import funkin.modding.PolymodHandler;
+
+import funkin.graphics.FunkinSprite;
+
+import funkin.PlayerSettings;
+
+import haxe.Unserializer;
+
+import openfl.net.URLLoader;
+import openfl.net.URLRequest;
+
+import funkin.input.Controls;
+//import sys.net.Host;
+import funkin.modding.base.ScriptedMusicBeatState;
+
+import hscript.Parser;
+import hscript.Interp;
+//import sys.net.Socket;
+
+//import sys.ssl.Socket;
+
+import funkin.util.FileUtil;
+
+import haxe.Log;
+
+class HScriptRunner extends Module {
+    //var Http;
+
+    var interp = new Interp();
+
+    var stateScripts = [];
+
+	public function new() {
+		super('HScriptRunner');
+	}
+
+    function onCreate(e) {
+        super.onCreate(e);
+    }
+
+    function checkDirState(folder) {
+        for (file in FileUtil.readDir(folder)) {
+            if (StringTools.startsWith(file, currentState) && StringTools.endsWith(file, ".hx")) {
+                //trace(FileUtil.readStringFromPath(folder + "/" + file));
+                var daScript = new HScript();
+                daScript.init(FileUtil.readStringFromPath(folder + "/" + file));
+                for (i in ReflectUtil.getFieldsOf(FlxG.state)) {
+                    daScript.set(i, ReflectUtil.getField(FlxG.state, i));
+                }
+                stateScripts.push(daScript);
+            }
+        }
+    }
+
+    var currentState = "";
+
+    function onStateChangeEnd() {
+        super.onStateChangeEnd();
+        var daThing = ReflectUtil.getClassNameOf(FlxG.state).split(".");
+        currentState = daThing[daThing.length - 1];
+
+        for (script in stateScripts) {
+            script.destroy();
+        }
+        stateScripts = [];
+        for (mod in PolymodHandler.getAllMods()) {
+            if (FileUtil.directoryExists("mods/" + mod.id + "/data/states")) {
+                checkDirState("mods/" + mod.id + "/data/states");
+            }
+        }
+    }
+
+    function callInScripts(name, params = []) {
+        for (script in stateScripts) {
+            script.call(name, params);
+        }
+    }
+
+    function setInScripts(variable, value) {
+        for (script in stateScripts) {
+            script.set(variable, value);
+        }
+    }
+
+    function onUpdate(event) {
+        super.onUpdate(event);
+
+        if (FlxG.keys.justPressed.F12) {
+            FlxG.resetState();
+        }
+
+        callInScripts("update");
+        callInScripts("onUpdate");
+        if (FlxG.state != null) {
+            for (i in ReflectUtil.getFieldsOf(FlxG.state)) {
+                setInScripts(i, ReflectUtil.getField(FlxG.state, i));
+            }
+        }
+    }
+
+    function onBeatHit(event) {
+        super.onBeatHit(event);
+        setInScripts("curBeat", event.beat);
+        callInScripts("beatHit", [event.beat]);
+        callInScripts("onBeatHit", [event.beat]);
+    }
+    function onStepHit(event) {
+        super.onStepHit(event);
+        setInScripts("curStep", event.step);
+        callInScripts("stepHit", [event.step]);
+        callInScripts("onStepHit", [event.step]);
+    }
+}
