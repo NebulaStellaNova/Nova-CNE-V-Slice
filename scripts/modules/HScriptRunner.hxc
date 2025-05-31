@@ -33,21 +33,35 @@ import haxe.Log;
 class HScriptRunner extends Module {
     //var Http;
 
+    var extensions = ["hx", "hscript", "hsc", "hxs"];
+
     var interp = new Interp();
 
     var stateScripts = [];
+    var globalScripts = [];
 
 	public function new() {
 		super('HScriptRunner');
+        globalScripts = [];
 	}
 
     function onCreate(e) {
         super.onCreate(e);
     }
 
+    function endsWithExt(file) {
+        var ends = false;
+        for (i in extensions) {
+            if (StringTools.endsWith(file.toLowerCase(), "." + i)) {
+                ends = true;
+            }
+        }
+        return ends;
+    }
+
     function checkDirState(folder) {
         for (file in FileUtil.readDir(folder)) {
-            if (StringTools.startsWith(file, currentState) && StringTools.endsWith(file, ".hx")) {
+            if (StringTools.startsWith(file, currentState) && endsWithExt(file)) {
                 //trace(FileUtil.readStringFromPath(folder + "/" + file));
                 var daScript = new HScript();
                 daScript.init(FileUtil.readStringFromPath(folder + "/" + file));
@@ -55,6 +69,46 @@ class HScriptRunner extends Module {
                     daScript.set(i, ReflectUtil.getField(FlxG.state, i));
                 }
                 stateScripts.push(daScript);
+            }
+        }
+    }
+    function checkDirSong(folder) {
+        for (file in FileUtil.readDir(folder)) {
+            if (StringTools.contains(folder, "data/scripts/song") && endsWithExt(file)) {
+                //trace(FileUtil.readStringFromPath(folder + "/" + file));
+                var daScript = new HScript();
+                daScript.init(FileUtil.readStringFromPath(folder + "/" + file));
+                for (i in ReflectUtil.getFieldsOf(FlxG.state)) {
+                    daScript.set(i, ReflectUtil.getField(FlxG.state, i));
+                }
+                stateScripts.push(daScript);
+            }
+        }
+    }
+    function checkDirSongData(folder) {
+        for (file in FileUtil.readDir(folder)) {
+            if (StringTools.contains(folder, "data/songs/" + PlayState.instance.currentSong.id + "/scripts") && endsWithExt(file)) {
+                //trace(FileUtil.readStringFromPath(folder + "/" + file));
+                var daScript = new HScript();
+                daScript.init(FileUtil.readStringFromPath(folder + "/" + file));
+                for (i in ReflectUtil.getFieldsOf(FlxG.state)) {
+                    daScript.set(i, ReflectUtil.getField(FlxG.state, i));
+                }
+                stateScripts.push(daScript);
+            }
+        }
+    }
+    function checkDirGlobal(folder) {
+        for (file in FileUtil.readDir(folder)) {
+            //trace(file);
+            if (endsWithExt(file)) {
+                //trace(FileUtil.readStringFromPath(folder + "/" + file));
+                var daScript = new HScript();
+                daScript.init(FileUtil.readStringFromPath(folder + "/" + file));
+                for (i in ReflectUtil.getFieldsOf(FlxG.state)) {
+                    daScript.set(i, ReflectUtil.getField(FlxG.state, i));
+                }
+                globalScripts.push(daScript);
             }
         }
     }
@@ -75,10 +129,23 @@ class HScriptRunner extends Module {
                 checkDirState("mods/" + mod.id + "/data/states");
             }
         }
+        if (currentState == "PlayState") {
+            for (mod in PolymodHandler.getAllMods()) {
+                if (FileUtil.directoryExists("mods/" + mod.id + "/data/scripts/song")) {
+                    checkDirSong("mods/" + mod.id + "/data/scripts/song");
+                }
+                if (FileUtil.directoryExists("mods/" + mod.id + "/data/songs/" + PlayState.instance.currentSong.id + "/scripts")) {
+                    checkDirSongData("mods/" + mod.id + "/data/songs/" + PlayState.instance.currentSong.id + "/scripts");
+                }
+            }
+        }
     }
 
     function callInScripts(name, params = []) {
         for (script in stateScripts) {
+            script.call(name, params);
+        }
+        for (script in globalScripts) {
             script.call(name, params);
         }
     }
@@ -87,15 +154,26 @@ class HScriptRunner extends Module {
         for (script in stateScripts) {
             script.set(variable, value);
         }
+        for (script in globalScripts) {
+            script.set(variable, value);
+        }
     }
 
     function onUpdate(event) {
         super.onUpdate(event);
+        if (globalScripts.length == 0) {
+            for (mod in PolymodHandler.getAllMods()) {
+                if (FileUtil.directoryExists("mods/" + mod.id + "/data/scripts/global")) {
+                    checkDirGlobal("mods/" + mod.id + "/data/scripts/global");
+                }
+            }
+        }
 
         if (FlxG.keys.justPressed.F12) {
             FlxG.resetState();
         }
 
+        setInScripts("currentState", currentState);
         callInScripts("update");
         callInScripts("onUpdate");
         if (FlxG.state != null) {
